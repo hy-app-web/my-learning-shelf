@@ -2,7 +2,7 @@ const app = document.querySelector('#app');
 const dateFormatter = new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Tokyo', year:'numeric', month:'2-digit', day:'2-digit'});
 const start = Date.UTC(2026, 10, 27);
 const dayMs = 86400000;
-const releaseDays = 16;
+const originalReleaseDays = 16;
 const today = () => Math.max(0, Math.floor((Date.parse(dateFormatter.format(new Date())) - start) / dayMs));
 const dateLabel = day => new Intl.DateTimeFormat('ja-JP', {timeZone:'UTC', month:'long', day:'numeric'}).format(start + day * dayMs);
 const key = 'my-learning-shelf-read-v1';
@@ -11,9 +11,13 @@ let canSave = true;
 try { progress = new Set(JSON.parse(localStorage.getItem(key) || '[]')); } catch { canSave = false; }
 const catalog = categories.map((category, c) => ({
   title: category.title,
-  lessons: category.lessons.map(([title, body], i) => ({id:'lesson-' + (c+1) + '-' + (i+1), title, body, category:category.title, day:i*2 + Number(c>=3)}))
+  lessons: category.lessons.map(([title, body, source], i) => ({
+    id:'lesson-' + (c+1) + '-' + (i+1), title, body, source, category:category.title,
+    day:c < 6 ? i * 2 + Number(c >= 3) : originalReleaseDays + Math.floor((i * 2 + c - 6) / 3)
+  }))
 }));
 const all = catalog.flatMap(category => category.lessons);
+const lastReleaseDay = Math.max(...all.map(lesson => lesson.day));
 function element(tag, text, cls) {
   const el = document.createElement(tag);
   if (text) el.textContent = text;
@@ -44,6 +48,13 @@ function render() {
     article.append(element('p', lesson.category + ' · ' + dateLabel(lesson.day), 'muted'), element('h1', lesson.title));
     const sentences = lesson.body.match(/[^。]+。?/g) || [lesson.body];
     article.append(element('p', sentences.slice(0,-1).join('')), element('p', sentences.at(-1)));
+    if (lesson.source) {
+      const source = element('a', '参考資料');
+      source.href = lesson.source;
+      const reference = element('p', '', 'muted');
+      reference.append(source);
+      article.append(reference);
+    }
     const read = element('button', progress.has(lesson.id) ? '✓ 既読にしました' : '読み終えた');
     read.className = 'action';
     read.setAttribute('aria-pressed', String(progress.has(lesson.id)));
@@ -60,11 +71,12 @@ function render() {
     return;
   }
   const header = element('header');
-  header.append(element('h1', '自分だけの教科書'), element('p', progress.size + ' / 48 テーマを読了', 'muted'));
+  header.append(element('h1', '自分だけの教科書'), element('p', progress.size + ' / ' + all.length + ' テーマを読了', 'muted'));
   app.append(header);
-  const latest = Math.min(current, releaseDays - 1);
+  const latest = Math.min(current, lastReleaseDay);
+  const recent = all.filter(item => item.day === latest);
   const daily = element('section', '', 'today');
-  daily.append(element('h2', current === latest ? '今日の３本' : '最後に追加された３本'), element('p', dateLabel(latest), 'muted'), list(all.filter(item=>item.day===latest), current));
+  daily.append(element('h2', (current === latest ? '今日の' : '最後に追加された') + (recent.length === 3 ? '３' : String(recent.length)) + '本'), element('p', dateLabel(latest), 'muted'), list(recent, current));
   app.append(daily, element('h2', '全テーマ'));
   for (const category of catalog) {
     const group = element('section', '', 'category');
